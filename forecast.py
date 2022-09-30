@@ -1,12 +1,17 @@
-from ib_insync import *
+#from ib_insync import *
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from datetime import date
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import TruncatedSVD
 from sklearn.model_selection import ShuffleSplit,GridSearchCV
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 import pickle as pkl
+
+from util import send_mail
+import pdb
+#pdb.pm()
 
 class Forecast:
     def __init__(self) -> None:
@@ -16,13 +21,13 @@ class Forecast:
         self.start_date = '2015-01-01'
         self.end_date = date.today().isoformat()
 
-        cache_file = f'etf_prices_{end_date}.pkl'
+        cache_file = f'etf_prices_{self.end_date}.pkl'
         if cache:
             try:
                 self.prices = pd.read_pickle(cache_file)  
                 return
             except:
-                print(f"Cache data not available for f{self.end_date}. Downloading...")
+                print(f"Cache data not available for {self.end_date}. Downloading...")
 
         etfs = pd.read_excel(sheet)
 
@@ -39,7 +44,9 @@ class Forecast:
         return self.prices
 
     def data_science(self, cache=True):
-        pass
+        self.get_factors(cache)
+        self.prepare_data()
+        self.predict()
 
     def get_factors(self, cache=True):
         self.ret = self.prices.pct_change()[1:]
@@ -56,12 +63,12 @@ class Forecast:
                 factors = svd.transform(self.retn.dropna(1))
                 cache_failed = False
             except:
-                print(f"Cache svd not available for f{self.end_date}. Fitting...")
+                print(f"Cache svd not available for {self.end_date}. Fitting...")
 
         if cache_failed:
             svd = TruncatedSVD(n_components=n_comp, random_state=42)
             factors = svd.fit_transform(self.retn.dropna(1))
-            with open(cache_file, 'rb') as f:
+            with open(cache_file, 'wb') as f:
                 pkl.dump(svd, f)            
 
         factors /= svd.singular_values_
@@ -84,11 +91,11 @@ class Forecast:
 
         self.X, self.y, self.w = xmi.drop('y',axis=1), xmi['y'] > 0, abs(xmi['y'])
 
-    def predict(self, how='histgrad'):
-        if how not in ['histgrad']:
+    def predict(self, how='grad'):
+        if how not in ['grad']:
             raise NotImplementedError()
             
-        clf = HistGradientBoostingClassifier()
+        clf = GradientBoostingClassifier()
         param_grid = {
             'learning_rate': [.01,.1,.5],
             'random_state': [42],
@@ -110,3 +117,15 @@ class Forecast:
         pred['prob'] = prob
         self.pred = pred
         self.grid = grid
+        
+        next_t = self.pred.index[-1]+1
+        self.pred.loc[next_t] = np.nan
+        self.pred = self.pred.shift(1)
+        
+if __name__ == '__main__':
+    f = Forecast()
+    f.data_science()
+    
+    print(f.pred.tail())
+    send_mail(df=f.pred.tail())
+    
