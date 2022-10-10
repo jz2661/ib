@@ -1,7 +1,9 @@
 import logging,os
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime,date
+import pytz
+
 from email.mime.text import MIMEText
 
 # Import smtplib for the actual sending function
@@ -11,7 +13,36 @@ import mimetypes
 # Here are the email package modules we'll need
 from email.message import EmailMessage
 
-__all__ = ['expand_data','black','rank','remove_seen','send_mail']
+#__all__ = ['expand_data','black','rank','remove_seen','send_mail','today_str','tz_now','tz_min']
+
+def today_str(tz='US/Eastern'):
+    if tz:
+        return datetime.now(pytz.timezone(tz)).date().isoformat()
+    return date.today().isoformat()
+
+def tz_now(tz='US/Eastern'):
+    if tz:
+        return datetime.now(pytz.timezone(tz))
+    return datetime.now()
+
+def tz_combine(time, tz='US/Eastern'):
+    dn = tz_now(tz)
+    return datetime.combine(dn.date(), time)
+
+def last_tindex(df, t):
+    try:
+        return df.index[df.index < datetime.combine(t, datetime.min.time())][-1]
+    except:
+        return df.index[df.index < t][-1]
+
+def dtstr_add_tz(dtstr, tz):
+    dt = datetime.fromisoformat(dtstr)
+    if tz:
+        return pytz.timezone(tz).localize(dt)
+    return dt
+
+def tz_min():
+    return datetime.min.replace(tzinfo=pytz.timezone('US/Eastern'))
 
 def expand_data(data):
     return (data.date, data.title, data.company, data.apply_link, data.link, len(data.description), data.place)
