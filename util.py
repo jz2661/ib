@@ -26,6 +26,8 @@ def tz_now(tz='US/Eastern'):
     return datetime.now()
 
 def tz_combine(time, tz='US/Eastern'):
+    if type(time) == str:
+        time = datetime.strptime(time, '%H:%M').time()
     dn = tz_now(tz)
     return datetime.combine(dn.date(), time)
 
