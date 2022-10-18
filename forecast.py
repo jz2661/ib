@@ -87,29 +87,39 @@ class Forecast:
         Xm['y'] = Xm['y'].shift(-1)
         self.Xm = Xm
 
-        xmi = Xm[:-1]
+        xmi = Xm[:-2]
 
         self.X, self.y, self.w = xmi.drop('y',axis=1), xmi['y'] > 0, abs(xmi['y'])
 
     def predict(self, how='grad'):
         if how not in ['grad']:
             raise NotImplementedError()
-            
-        clf = GradientBoostingClassifier()
-        param_grid = {
-            'learning_rate': [.01,.1,.5],
-            'random_state': [42],
-            'min_samples_leaf': [1,5],
-        }
+        
+        if 0:
+            clf = GradientBoostingClassifier()
+            param_grid = {
+                'learning_rate': [.01,.03],
+                'n_estimators': [100,300,500],
+                'random_state': [42],
+                'min_samples_leaf': [1,2],
+                'max_features': [2,'auto',None],
+                'warm_start': [True],
+            }
 
-        grid = GridSearchCV(
-            clf,
-            param_grid=param_grid,
-            cv=ShuffleSplit(
-                test_size=40, n_splits=10, random_state=42
-            ),
-        )
-        grid.fit(self.X, self.y, sample_weight=self.w)
+            grid = GridSearchCV(
+                clf,
+                param_grid=param_grid,
+                cv=ShuffleSplit(
+                    test_size=40, n_splits=10, random_state=42
+                ),
+            )
+            grid.fit(self.X, self.y, sample_weight=self.w)
+            if 0:
+                with open('gb_grid.pkl', 'wb') as fo:
+                    pkl.dump(grid, fo)            
+        else:
+            with open('gb_grid.pkl', 'rb') as fo:
+                grid = pkl.load(fo)
 
         prob = [x[1] for x in grid.predict_proba(self.Xm.drop('y',axis=1))]
 
@@ -118,7 +128,7 @@ class Forecast:
         self.pred = pred
         self.grid = grid
         
-        next_t = self.pred.index[-1]+1
+        next_t = self.pred.index[-1]+ pd.Timedelta(30, unit='D')
         self.pred.loc[next_t] = np.nan
         self.pred = self.pred.shift(1)
         
