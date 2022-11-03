@@ -15,6 +15,9 @@ from email.message import EmailMessage
 
 #__all__ = ['expand_data','black','rank','remove_seen','send_mail','today_str','tz_now','tz_min']
 
+class WZException(Exception):
+    pass
+
 def today_str(tz='US/Eastern'):
     if tz:
         return datetime.now(pytz.timezone(tz)).date().isoformat()

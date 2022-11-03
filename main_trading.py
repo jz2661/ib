@@ -13,7 +13,7 @@ from scheduler import Scheduler
 import pytz
 from data_service import *
 
-from cooc import COOC
+from cooc2 import COOC
 import json
 
 import asyncio
@@ -52,10 +52,13 @@ class Trader:
 
     def init_timed_jobs(self, jobs):
         for jb in jobs:
-            self.sche.daily(jb[0].replace(tzinfo=self.tzinfo), lambda: self.strat_to_job(jb[1]))
+            if jb[0]:
+                self.sche.daily(jb[0].replace(tzinfo=self.tzinfo), lambda: self.strat_to_job(jb[1]))
+            else: # immediate
+                self.strat_to_job(jb[1])
 
     def strat_to_job(self, s):
-        s.evolve_1day()      
+        s.evolve_1day(self.now().date().isoformat()) # time zone aware????     
         self.trades += s.trades
 
     def evolve(self):
@@ -81,9 +84,11 @@ class Trader:
         asyncio.run(self.run_periodically(60, self.period_check))
 
 if __name__ == '__main__':
-    ds = LiveData()
+    ps = LiveData()
     jobs = [
-        (dt.time(0,00), COOC(ds)),
+        (dt.time(9,30), COOC(ps)),
+        (dt.time(16,30), COOC(ps)),
+        (None, COOC(ps)),
     ]
     #td = Trader([SampleStrategyHK(),COOC('2800')], tz=None)
     td = Trader(jobs, tz='US/Eastern')
