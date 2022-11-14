@@ -49,7 +49,9 @@ class COOC(DailyStrategy):
         self.comap.update({x: -1 for x in [7,1,4,]})
 
         self.tilt = 0 # mkt neutral
-    
+
+        #self.data_service = ds
+
     def co_to_signal(self, co):
         cor = min(int(stats.percentileofscore(self.hdf['co'][-500:], co, kind='rank')/10), 9)
         return np.median([self.comap.get(cor, 0)+self.tilt,-1,1])
@@ -58,11 +60,13 @@ class COOC(DailyStrategy):
 
         try:
             last_close = self.yday_ds['prices'][self.tk]
-        except AttributeError:
+        except:
             # no yday_ds
             last_close = self.data_service.get(self.tk, 'Close', str(self.cal.previous_session(valdate).date()))        
 
-        opening = self.data_service.get(self.tk, 'Open', self.valdate)
+        opening = self.data_service.get(self.tk, 'Open', valdate)
+        #latest = self.data_service.get(self.tk, 'Close', valdate) # live and backtest inconsistent
+        latest = opening
 
         ds = {'date': valdate}
         wgt = self.co_to_signal(opening / last_close - 1.)
@@ -73,23 +77,23 @@ class COOC(DailyStrategy):
         ds['last_close'] = last_close
         ds['wgt'] = wgt
 
-        aq = int(self.notional * abs(wgt) / lp['Close'][-1] / 10) * 10
+        aq = int(self.notional * abs(wgt) / latest / 10) * 10
         qty = aq * np.sign(wgt)
         ds['intraday_qty'] = qty
+
+        self.trades = []
+        ds['trades'] = self.trades
+        ds['units'] = {}
+        ds['prices'] = {self.tk: self.data_service.get(self.tk, 'Close', valdate)}
 
         if not qty:
             return ds
 
-        ltp2, ltp1 = self.make_limit_prices(lp['Close'][-1])
+        ltp2, ltp1 = self.make_limit_prices(latest)
         if qty < 0:
             ltp2, ltp1 = ltp1, ltp2
 
-        self.trades = []
         self.trades.append(self.make_order(self.tk, qty, ltp1, 'Limit', self.intime))
         self.trades.append(self.make_order(self.tk, -qty, ltp2, 'Market', self.outtime))
-        ds['trades'] = self.trades
-
-        ds['units'] = {}
-        ds['prices'] = {self.tk: self.data_service.get(self.tk, 'Latest', self.valdate)}
 
         return ds

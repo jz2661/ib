@@ -13,11 +13,12 @@ ROOT = r'C:\ib\strategies'
 MIN_DATE = '1970-01-01'
 
 class Strategy:
-    def __init__(self, ds) -> None:
+    def __init__(self, ps) -> None:
         self.name = "Default"
         self.notional = 1e6 # $1m
         self.tz = 'US/Eastern' # None if HK
-        self.ds = ds # data service
+        self.data_service = ps # price service
+        
         self.cal = xcals.get_calendar("XNYS")
 
     def now(self):
@@ -44,7 +45,8 @@ class Strategy:
         
         self.trades = []
         ds = self.evolve(valdate)
-        self.signoff()
+        self.signoff(valdate)
+        ds['cash'] = self.cash
         ds['level'] = self.level
 
         for dfile in [ds_today]:
@@ -67,14 +69,16 @@ class Strategy:
     def make_limit_prices(self, p, offset=0.1e-2):
         return [x.round(2) for x in (p*(1-offset), p*(1+offset))]
 
-    def signoff(self):
+    def signoff(self, valdate):
         # calc pnl
         cash = self.yday_ds['cash']
         for td in self.trades:
-            snap_str = str(td['ready'])[:5]
-            p = self.data_service.get(td['ticker'], snap_str, self.valdate)
+            snap_str = str(td['ready']).split('T')[1][:5]
+            p = self.data_service.get(td['ticker'], snap_str, valdate)
+            td['execute_indicative_price'] = p
             cash -= p * td['quantity']
         
+        self.cash = cash
         self.level = cash
 
         try:
@@ -88,8 +92,8 @@ class Strategy:
         
 class DailyStrategy(Strategy):
     # evolve once a day
-    def __init__(self, ds) -> None:
-        super().__init__(ds)
+    def __init__(self, ps) -> None:
+        super().__init__(ps)
         self.job_time = datetime.time(9,30) # mng job
 
     def has_traded(self):
@@ -119,7 +123,7 @@ class DailyStrategy(Strategy):
             print(f"{self.name} has evolved for {today_str(self.tz)}, skipping.")
             return
 
-        super().evolve_1day()
+        super().evolve_1day(valdate)
 
 if __name__ == '__main__':
     pass
