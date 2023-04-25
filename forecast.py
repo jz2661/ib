@@ -8,10 +8,12 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.model_selection import ShuffleSplit,GridSearchCV
 from sklearn.ensemble import GradientBoostingClassifier
 import pickle as pkl
+import os
 
 from util import send_mail
-import pdb
-#pdb.pm()
+
+#import eventlet
+#eventlet.monkey_patch()
 
 class Forecast:
     def __init__(self) -> None:
@@ -32,6 +34,9 @@ class Forecast:
         etfs = pd.read_excel(sheet)
 
         data = yf.download(list(etfs['Ticker']),self.start_date,self.end_date)
+        if missing_col := sum(data.isnull().all()) > 0:
+            raise AttributeError(f"Failed to fetch prices for {missing_col} tickers.")
+
         self.yahoo_to_prices(data)
 
         self.prices.to_pickle(cache_file)
@@ -60,14 +65,16 @@ class Forecast:
             try:
                 with open(cache_file, 'rb') as f:
                     svd = pkl.load(f)
-                factors = svd.transform(self.retn.dropna(1))
+                factors = svd.transform(self.retn.dropna(axis=1))
                 cache_failed = False
             except:
                 print(f"Cache svd not available for {self.end_date}. Fitting...")
 
         if cache_failed:
             svd = TruncatedSVD(n_components=n_comp, random_state=42)
-            factors = svd.fit_transform(self.retn.dropna(1))
+            factors = svd.fit_transform(self.retn.dropna(axis=1))
+            os.rename(cache_file, self.end_date+'_'+cache_file)
+
             with open(cache_file, 'wb') as f:
                 pkl.dump(svd, f)            
 
@@ -80,6 +87,8 @@ class Forecast:
     def prepare_data(self):
 
         X = self.factors.copy()
+        X.index = pd.to_datetime(X.index)
+        
         X['y'] = self.ret['QQQ']
         self.Xall = X.copy()
 
@@ -128,7 +137,7 @@ class Forecast:
         self.pred = pred
         self.grid = grid
         
-        next_t = self.pred.index[-1]+ pd.Timedelta(30, unit='D')
+        next_t = self.pred.index[-1]+ pd.Timedelta(28, unit='D')
         self.pred.loc[next_t] = np.nan
         self.pred = self.pred.shift(1)
         

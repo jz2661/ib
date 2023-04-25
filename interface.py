@@ -4,22 +4,25 @@ import numpy as np
 from ib_insync import *
 import os
 from abc import abstractmethod
-from util import today_str, tz_now, tz_combine
+from util import today_str, tz_now, tz_combine, WZException
 import datetime
 import json
 import exchange_calendars as xcals
 
-ROOT = r'C:\ib\strategies'
+ROOT = r'C:\repo\ib\strategies'
 MIN_DATE = '1970-01-01'
 
 class Strategy:
-    def __init__(self, ps) -> None:
+    def __init__(self, ps, **kwargs) -> None:
+        print(kwargs)
         self.name = "Default"
         self.notional = 1e6 # $1m
         self.tz = 'US/Eastern' # None if HK
         self.data_service = ps # price service
         
         self.cal = xcals.get_calendar("XNYS")
+
+        self.send_order = kwargs.get('send_order', True)    
 
     def now(self):
         return tz_now(self.tz)
@@ -41,7 +44,7 @@ class Strategy:
             with open(ds_last, 'r') as f:
                 self.yday_ds = json.load(f)
         except:
-            pass
+            raise WZException(f"Missing DS for {self.cal.previous_session(valdate).date()}.")
         
         self.trades = []
         ds = self.evolve(valdate)
@@ -52,6 +55,11 @@ class Strategy:
         for dfile in [ds_today]:
             with open(dfile, 'w') as f:
                 json.dump(ds, f)
+
+        print(f"send_order: {self.send_order}")
+
+        if not self.send_order:
+            self.trades = []
 
     def make_order(self, tk, q, p, ot='Market', rtime=None):
         odr = {
@@ -71,10 +79,19 @@ class Strategy:
 
     def signoff(self, valdate):
         # calc pnl
-        cash = self.yday_ds['cash']
+        try:
+            cash = self.yday_ds['cash']
+        except Exception as e:
+            raise WZException(f"Signoff failed for {valdate}.")
         for td in self.trades:
             snap_str = str(td['ready']).split('T')[1][:5]
+
             p = self.data_service.get(td['ticker'], snap_str, valdate)
+            if p is None:
+                print(f"Using Close for {snap_str} on {valdate}.")
+                #p = self.data_service.get(td['ticker'], "Close", valdate)
+                p = td['price']
+
             td['execute_indicative_price'] = p
             cash -= p * td['quantity']
         
@@ -92,8 +109,8 @@ class Strategy:
         
 class DailyStrategy(Strategy):
     # evolve once a day
-    def __init__(self, ps) -> None:
-        super().__init__(ps)
+    def __init__(self, ps, **kwargs) -> None:
+        super().__init__(ps, **kwargs)
         self.job_time = datetime.time(9,30) # mng job
 
     def has_traded(self):

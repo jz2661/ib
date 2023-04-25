@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime,date
 import pytz
+import asyncio
 
 from email.mime.text import MIMEText
 
@@ -14,6 +15,14 @@ import mimetypes
 from email.message import EmailMessage
 
 #__all__ = ['expand_data','black','rank','remove_seen','send_mail','today_str','tz_now','tz_min']
+
+async def run_periodically(interval, periodic_function):
+    while True:
+        periodic_function()
+        try:
+            await asyncio.wait_for( asyncio.sleep(interval), interval+3)
+        except:
+            print("Loop got a timeout. Resuming..")
 
 class WZException(Exception):
     pass
